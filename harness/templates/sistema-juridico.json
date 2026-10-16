@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "maxJobs": 2,
+  "maxCorrectionCycles": 5,
+  "timeoutSeconds": 1800,
+  "postgresImage": "postgres:17.11-trixie",
+  "databaseSchema": "sistema_juridico",
+  "checkCommand": [
+    "./mvnw",
+    "-B",
+    "-Dui.capture=true",
+    "-Dux.audit=true",
+    "verify"
+  ],
+  "buildCommand": [
+    "./mvnw",
+    "-B",
+    "-DskipTests",
+    "package"
+  ],
+  "jar": "target/sistema-juridico.jar",
+  "healthPath": "/actuator/health",
+  "playwrightMcpVersion": "0.0.80",
+  "adapter": "adapters/sistema_juridico.py",
+  "publication": {
+    "enabled": false
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "defaultMode": "manual",
+    "deny": [
+      "Bash(git push*)",
+      "Bash(gh pr*)",
+      "Bash(glab mr*)",
+      "Bash(*harness.py approve*)",
+      "Bash(*harness.py cleanup*)",
+      "Bash(*harness.py reset-db*)",
+      "Bash(*harness.py extend*)",
+      "Read(**/secrets.json)",
+      "Read(**/.env*)",
+      "Edit(**/harness/**)",
+      "Write(**/harness/**)",
+      "Edit(**/.claude/**)",
+      "Write(**/.claude/**)",
+      "Edit(**/state.json)",
+      "Write(**/state.json)",
+      "Bash(*harness.py repair-flyway-network*)"
+    ]
+  }
+}

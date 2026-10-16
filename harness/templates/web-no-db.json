@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 2,
+  "adapter": "adapters/commands.py",
+  "needsConfiguration": true,
+  "maxJobs": 2,
+  "maxCorrectionCycles": 5,
+  "timeoutSeconds": 1800,
+  "playwrightMcpVersion": "0.0.80",
+  "requiredTools": [
+    "npm"
+  ],
+  "database": {
+    "provider": "none"
+  },
+  "env": {},
+  "setup": [
+    {
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "id": "setup-0",
+      "cache": true,
+      "usesDatabase": false,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "outputs": [
+        "node_modules"
+      ],
+      "outputExcludes": [
+        "node_modules/.vite/**",
+        "node_modules/.vite-temp/**",
+        "node_modules/.cache/**"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "test:ci"
+      ],
+      "id": "checks-0",
+      "cache": true,
+      "usesDatabase": false,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "dependsOn": [
+        "setup-0"
+      ],
+      "reports": [
+        "tests"
+      ]
+    }
+  ],
+  "testReports": {
+    "tests": ".harness/reports/junit.xml"
+  },
+  "build": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "id": "build-0",
+      "cache": true,
+      "usesDatabase": false,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "dependsOn": [
+        "setup-0"
+      ],
+      "outputs": [
+        "dist"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "name": "web",
+      "command": [
+        "npm",
+        "run",
+        "preview",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "${PORT_WEB}",
+        "--strictPort"
+      ],
+      "healthPath": "/",
+      "artifacts": [
+        "dist"
+      ]
+    }
+  ],
+  "publication": {
+    "enabled": false
+  }
+}

@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 2,
+  "adapter": "adapters/commands.py",
+  "needsConfiguration": true,
+  "maxJobs": 2,
+  "maxCorrectionCycles": 5,
+  "timeoutSeconds": 1800,
+  "playwrightMcpVersion": "0.0.80",
+  "requiredTools": [
+    "npm"
+  ],
+  "database": {
+    "provider": "postgres",
+    "image": "postgres:17.11-trixie",
+    "schema": "public",
+    "migratorRole": "harness_migrator",
+    "appRole": "harness_app",
+    "historySql": "SELECT id, checksum FROM \"${SCHEMA}\".\"migration_history\" ORDER BY id"
+  },
+  "env": {
+    "VITE_API_URL": "${URL_API}"
+  },
+  "setup": [
+    {
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "cwd": "frontend",
+      "id": "setup-0",
+      "cache": true,
+      "usesDatabase": false,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "outputs": [
+        "node_modules"
+      ],
+      "outputExcludes": [
+        "node_modules/.vite/**",
+        "node_modules/.vite-temp/**",
+        "node_modules/.cache/**"
+      ]
+    },
+    {
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "cwd": "backend",
+      "id": "setup-1",
+      "cache": true,
+      "usesDatabase": false,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "outputs": [
+        "node_modules"
+      ],
+      "outputExcludes": [
+        "node_modules/.vite/**",
+        "node_modules/.vite-temp/**",
+        "node_modules/.cache/**"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "test:ci"
+      ],
+      "cwd": "backend",
+      "id": "checks-0",
+      "cache": false,
+      "usesDatabase": true,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "dependsOn": [
+        "setup-0",
+        "setup-1"
+      ],
+      "reports": [
+        "unit"
+      ]
+    }
+  ],
+  "testReports": {
+    "unit": "backend/test-results/unit.xml"
+  },
+  "build": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "cwd": "frontend",
+      "id": "build-0",
+      "cache": true,
+      "usesDatabase": false,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "dependsOn": [
+        "setup-0",
+        "setup-1"
+      ],
+      "outputs": [
+        "dist"
+      ]
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "cwd": "backend",
+      "id": "build-1",
+      "cache": true,
+      "usesDatabase": false,
+      "tools": [
+        "node",
+        "npm"
+      ],
+      "dependsOn": [
+        "setup-0",
+        "setup-1"
+      ],
+      "outputs": [
+        "dist"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "name": "api",
+      "command": [
+        "node",
+        "dist/server.js"
+      ],
+      "cwd": "backend",
+      "env": {
+        "PORT": "${PORT_API}",
+        "HOST": "127.0.0.1"
+      },
+      "healthPath": "/health",
+      "artifacts": [
+        "backend/dist"
+      ]
+    },
+    {
+      "name": "web",
+      "command": [
+        "npm",
+        "run",
+        "preview",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "${PORT_WEB}",
+        "--strictPort"
+      ],
+      "cwd": "frontend",
+      "healthPath": "/",
+      "artifacts": [
+        "frontend/dist"
+      ]
+    }
+  ],
+  "migrationFiles": [
+    "backend/migrations/**/*"
+  ],
+  "migrate": {
+    "command": [
+      "npm",
+      "run",
+      "db:migrate"
+    ],
+    "cwd": "backend"
+  },
+  "integrationChecks": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "test:integration:ci"
+      ],
+      "cwd": "backend"
+    }
+  ],
+  "integrationReports": {
+    "integration": "backend/test-results/integration.xml"
+  },
+  "previewService": "web",
+  "migrationSetup": [
+    {
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "cwd": "backend"
+    }
+  ],
+  "publication": {
+    "enabled": false
+  }
+}

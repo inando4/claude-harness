@@ -1,0 +1,37 @@
+{
+  "version": "REEMPLAZAR_CON_QA_VERSION",
+  "status": "blocked",
+  "browser": "chrome",
+  "headed": true,
+  "visualInspection": false,
+  "migrationVerified": false,
+  "criteria": [
+    {
+      "id": "AC-1",
+      "status": "pending",
+      "evidence": ""
+    }
+  ],
+  "integration": "",
+  "e2e": "",
+  "artifacts": [],
+  "findings": [],
+  "limitations": [
+    "Plantilla: no es evidencia de una ejecución real."
+  ],
+  "exploration": {
+    "tool": "playwright-mcp",
+    "scenarios": [],
+    "evidence": []
+  },
+  "repeatableE2E": {
+    "framework": "playwright",
+    "runner": "",
+    "command": [],
+    "testFiles": [],
+    "exitCode": null,
+    "passed": 0,
+    "report": ""
+  },
+  "observations": []
+}

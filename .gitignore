@@ -1,0 +1,33 @@
+# Estado, respaldos y cachés locales
+.harness/
+.migration-private/
+.worktrees/
+graphify-out/
+__pycache__/
+*.pyc
+node_modules/
+target/
+test-results/
+playwright-report/
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Material de desarrollo que no forma parte del paquete público
+/output/
+/harness/config.json
+/docs/harness-migracion.md
+/docs/harness-optimization-plan.md
+/docs/harness-publication-plan.md
+/docs/auditoria-harness-*.md
+
+# Copias de bases, credenciales y entornos locales
+*.dump
+*.backup
+*.sql.gz
+*.sql.gzip
+secrets.json
+.venv/
+venv/
+.DS_Store
