@@ -140,8 +140,9 @@ def start(h, args):
         with h.lock('conversation-' + sid):
             previous = conversation.existing(h, sid)
             if previous:
-                paths = [str((h.ROOT / p).resolve().relative_to(h.ROOT)) for p in args.spec]
-                h.require(previous['specs'] == paths, 'Esta sesión ya tiene otra spec. Abre otra sesión para el siguiente trabajo.')
+                layout = h.runtime_module('spec_layout')
+                paths = [layout.logical(str((h.ROOT / p).resolve().relative_to(h.ROOT))) for p in args.spec]
+                h.require([layout.logical(p) for p in previous['specs']] == paths, 'Esta sesión ya tiene otra spec. Abre otra sesión para el siguiente trabajo.')
                 print(json.dumps(h.brief(previous), ensure_ascii=False))
                 return
             return start_prepared(h, args)

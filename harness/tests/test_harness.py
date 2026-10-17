@@ -24,7 +24,7 @@ class HarnessTests(unittest.TestCase):
         h.ROOT, h.STORE = self.root, self.root / '.harness'
         (self.root / 'harness').mkdir()
         shutil.copytree(MODULE.parent/'adapters', self.root/'harness/adapters')
-        for name in ('browser_mcp.py','spec_status.py','qa_context.py','spec_readiness.py','conversation.py'):
+        for name in ('browser_mcp.py','spec_status.py','spec_layout.py','qa_context.py','spec_readiness.py','conversation.py'):
             shutil.copy2(MODULE.parent/name,self.root/'harness'/name)
         shutil.copy2(MODULE.parent/'repositories.py', self.root/'harness/repositories.py')
         shutil.copy2(MODULE.parent/'preflight.py', self.root/'harness/preflight.py')

@@ -335,7 +335,7 @@ def fingerprint(tree, product_only=False):
     for name in sorted(set(names.split('\0'))):
         if not name or name.startswith(('graphify-out/', '.harness/', 'harness/', '.claude/')):
             continue
-        if product_only and (name.startswith(('docs/', 'specs/')) or name in {'CLAUDE.md', 'CLAUDE.MD'}):
+        if product_only and documentation_path(name):
             continue
         p = tree / name
         digest.update(name.encode() + b'\0')
@@ -353,6 +353,11 @@ def inventory(tree):
     names = run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=tree)
     return {n: sha(Path(tree) / n) if (Path(tree) / n).is_file() else None
             for n in set(names.split('\0')) if n and not n.startswith(('graphify-out/', '.harness/'))}
+
+
+def documentation_path(name):
+    return (name.startswith(('docs/', 'specs/')) or name in {'CLAUDE.md', 'CLAUDE.MD'}
+            or (Path(name).parent == Path('.') and name.startswith('README') and name.endswith('.md')))
 
 
 ENV_KEYS = ('PATH', 'HOME', 'JAVA_HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'DISPLAY',
@@ -611,7 +616,7 @@ def prepare(a):
     require(a.branch.startswith('feat/'), 'Indica una rama feat/... explícita.')
     specs = []
     for value in a.spec:
-        p = (ROOT / value).resolve()
+        p = runtime_module('spec_layout').resolve(CoreContext(), value)
         require(p.is_relative_to(ROOT) and p.is_file(), 'Spec fuera del proyecto o inexistente.')
         specs.append(str(p.relative_to(ROOT)))
     runtime_module('spec_readiness').require_all(CoreContext(), specs)
@@ -682,16 +687,20 @@ def prepare(a):
         else:
             run(['git', '-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '-b', a.branch, s['worktree'], base])
         tree = Path(s['worktree'])
+        runtime_module('spec_layout').prepare_worktree(CoreContext(), s)
         # These harness files may not be committed yet. Never copy .env or product dirt.
         for name in ('harness', '.claude/skills/harness', '.claude/agents'):
             shutil.copytree(ROOT / name, tree / name, dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-        for name in ('.gitignore', 'CLAUDE.md', 'docs/harness-claude-spec.md', *specs):
+        s['specInputFiles'] = runtime_module('spec_layout').input_files(CoreContext(), specs)
+        for name in ('.gitignore', 'CLAUDE.md', 'docs/harness-claude-spec.md', *s['specInputFiles']):
             if not (ROOT / name).is_file():
                 continue
             dest = tree / name
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, dest)
+        for relative in {runtime_module('spec_layout').unit(p) for p in s['specTrackedInputs']}:
+            publication_module().git(CoreContext(), tree, 'add', '--update', '--', str(relative))
         atomic(tree / '.harness-parent.json', {'controller': str(ROOT), 'job': s['id']})
         with (tree / '.gitignore').open('a') as ignored:
             ignored.write('\n.harness-parent.json\n')
@@ -1146,7 +1155,7 @@ def finish(s):
     for repo, files in now.items():
         old = baseline.get(repo, {})
         changed = {p for p in files.keys() | old.keys() if files.get(p) != old.get(p)}
-        require(all(p.startswith(('docs/', 'specs/')) or p in {'CLAUDE.md', 'CLAUDE.MD'} for p in changed),
+        require(all(documentation_path(p) for p in changed),
                 'Documentación escribió fuera del alcance permitido en ' + repo)
         for name in changed:
             p = repository_root(s, repo) / name
@@ -1423,6 +1432,8 @@ def main():
         p = sub.add_parser(name, help='Revisar o consultar autorización previa de una spec, sin iniciar trabajos.')
         p.add_argument('spec')
         if name in {'spec-review', 'spec-accept'}: p.add_argument('--session-id', required=True)
+    p = sub.add_parser('spec-organize', help='Planificar la organización Draft/Ready/Done de specs existentes.')
+    p.add_argument('--apply', action='store_true', help='Aplicar el plan con respaldo, sin trabajos activos.')
     p = sub.add_parser('start', help='Preparar una spec autorizada usando setup local, con ID y rama automáticos.')
     p.add_argument('spec', nargs='+')
     p.add_argument('--job')
@@ -1452,6 +1463,10 @@ def main():
         if name == 'launch': p.add_argument('--background', action='store_true')
         if name == 'extend': p.add_argument('--cycles', type=int, required=True)
     a = parser.parse_args()
+    if a.command == 'spec-organize':
+        setup_module().ensure_controller(CoreContext())
+        print(json.dumps(runtime_module('spec_readiness').organize(CoreContext(), a.apply), ensure_ascii=False, indent=2))
+        return 0
     if a.command in {'spec-review', 'spec-accept', 'spec-draft', 'spec-status'}:
         setup_module().ensure_controller(CoreContext())
         module = runtime_module('spec_readiness')

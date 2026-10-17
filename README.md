@@ -44,12 +44,14 @@ Claude revisa el stack y configura comandos de tests, builds, servicios, informe
 
 ## Implementar una spec
 
-1. Crea `specs/mi-feature.md` desde `specs/plantilla-spec.md` y completa sus criterios. Empieza en **borrador**.
-2. Escribe `/harness ready specs/mi-feature.md`. Revisa el alcance y responde exactamente `LISTA PARA IMPLEMENTAR <código>` con el código que te muestre Claude.
-3. Inicia el trabajo con `/harness specs/mi-feature.md`. Autorizar la spec no inicia su implementación.
+1. Crea `specs/Draft/mi-feature.md` desde `specs/plantilla-spec.md` y completa sus criterios. Empieza en **borrador**.
+2. Escribe `/harness ready specs/Draft/mi-feature.md`. Revisa el alcance y responde exactamente `LISTA PARA IMPLEMENTAR <código>` con el código que te muestre Claude. El controlador la mueve a `Ready`.
+3. Inicia el trabajo con `/harness specs/Ready/mi-feature.md`. Autorizar la spec no inicia su implementación.
 4. Revisa el resultado en la URL local que recibas después de tests y QA. Entrega feedback o la confirmación explícita que solicite el controlador.
 
-La autorización corresponde a una versión concreta: cualquier cambio posterior invalida el permiso. Escribir a mano «lista para implementar» no la autoriza. La aprobación de la spec y la aprobación de la entrega son independientes.
+La autorización corresponde a una versión concreta: editar el contenido invalida el permiso. Escribir a mano «lista para implementar» o mover el archivo a `Ready` no la autoriza. La aprobación de la spec y la aprobación de la entrega son independientes.
+
+Las carpetas representan el ciclo **`Draft` → `Ready` → `Done`**: borradores o pendientes de autorización, versiones autorizadas, y trabajos terminados. Para specs con adjuntos usa `specs/Draft/mi-feature/spec.md`; el controlador mueve la carpeta completa, conserva sus recursos y ajusta los enlaces Markdown. Antes de editar una spec autorizada sin trabajo abierto, usa `python3 harness/harness.py spec-draft specs/Ready/mi-feature.md`: vuelve a `Draft` y revoca el permiso.
 
 Usa una conversación por spec. El límite predeterminado es dos trabajos simultáneos y cinco ciclos de corrección por trabajo. Los agentes heredan el modelo elegido en tu sesión. Con publicación habilitada, el controlador abre los PR y espera CI y **tu merge** antes de limpiar; no fusiona automáticamente.
 
@@ -64,6 +66,15 @@ python3 harness/install.py /ruta/a/tu-proyecto --update
 ```
 
 El instalador bloquea actualizaciones con trabajos abiertos, respalda los archivos reemplazados y conserva configuración, permisos y estado local. Aplica únicamente migraciones de configuración reconocidas. Abre otra sesión de Claude Code para cargar los cambios; repite `/harness setup` si el controlador pide revalidar la configuración o el entorno.
+
+Para organizar specs anteriores, ejecuta desde el proyecto destino, sin trabajos abiertos:
+
+```bash
+python3 harness/harness.py spec-organize
+python3 harness/harness.py spec-organize --apply
+```
+
+El primer comando muestra el plan. El segundo mueve los archivos con respaldo en `.harness/spec-moves/`, preserva las autorizaciones vigentes y ajusta enlaces. Solo pasan a `Ready` las specs con recibo válido; las marcadas `TERMINADO` pasan a `Done`. Las demás quedan en `Draft`. Las specs ya archivadas en `Done` permanecen allí; la plantilla se conserva en la raíz. Una colisión detiene el plan antes de mover archivos. Actualizar el instalador por sí solo crea las carpetas, sin reclasificar specs.
 
 ## Documentación y límites
 

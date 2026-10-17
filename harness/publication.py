@@ -102,7 +102,7 @@ def capture(h,s):
         # backup outside it; an ignored directory is never blanket-disposable.
         copies={}
         if tree == Path(s['worktree']):
-            for relative in s.get('specs',[]):
+            for relative in s.get('specInputFiles', s.get('specs', [])):
                 source=h.safe_path(h.ROOT,relative);copied=h.safe_path(tree,relative)
                 if git(h,tree,'ls-files','--error-unmatch','--',relative,check=False).returncode==0:continue
                 h.require(copied.is_file() and not (tree/relative).is_symlink() and copied.read_bytes()==source.read_bytes(),

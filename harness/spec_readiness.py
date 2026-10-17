@@ -10,7 +10,6 @@ import os
 from pathlib import Path
 import re
 import secrets
-import tempfile
 import time
 
 DRAFT = 'borrador'
@@ -46,18 +45,25 @@ def with_status(text, status):
 def document(h, value):
     if Path(value).is_absolute():
         value = os.path.relpath(value, h.ROOT)
-    path = h.safe_path(h.ROOT, value)
-    h.require(not (h.ROOT / value).is_symlink() and path.is_file() and path.suffix.lower() == '.md',
+    layout = h.runtime_module('spec_layout')
+    layout.regular(h, h.ROOT / value)
+    path = layout.resolve(h, value)
+    layout.regular(h, path)
+    h.require(path.is_file() and path.suffix.lower() == '.md',
               'La spec debe ser un archivo Markdown regular dentro del proyecto.')
     h.require(path.stat().st_size <= MAX_BYTES, 'Spec demasiado grande para revisar; máximo 2 MiB.')
-    raw = path.read_bytes()
+    return describe(h, str(path.relative_to(h.ROOT.resolve())), path.read_bytes())
+
+
+def describe(h, relative, raw):
+    """Describe an actual or planned document without changing authorization."""
+    path = h.safe_path(h.ROOT, relative)
     text = raw.decode('utf-8-sig')
     matches = list(STATUS.finditer(header(text)))
     h.require(len(matches) <= 1, 'La cabecera de la spec tiene varios campos Estado.')
     declared = matches[0][1].strip().strip('*').strip().casefold() if matches else DRAFT
-    relative = str(path.relative_to(h.ROOT.resolve()))
     return {'path': path, 'relative': relative, 'raw': raw, 'text': text, 'declared': declared,
-            'key': digest(relative.encode()), 'sha256': digest(raw),
+            'key': digest(h.runtime_module('spec_layout').logical(relative).encode()), 'sha256': digest(raw),
             'bodySha256': digest(with_status(text, DRAFT).encode())}
 
 
@@ -70,6 +76,7 @@ def record_path(h, key):
 
 def record(h, doc):
     path = record_path(h, doc['key'])
+    if not path.exists(): path = record_path(h, digest(doc['relative'].encode()))
     return json.loads(path.read_text()) if path.is_file() else {}
 
 
@@ -107,31 +114,57 @@ def require_all(h, values):
 
 
 def require_idle(h, doc):
+    layout = h.runtime_module('spec_layout')
+    owned = layout.unit(layout.logical(doc['relative']))
     for path in (h.STORE / 'runs').glob('*/state.json'):
         job = json.loads(path.read_text())
-        h.require(job.get('stage') in h.DONE or doc['relative'] not in job.get('specs', []),
+        h.require(job.get('stage') in h.DONE or not any(
+                  Path(layout.logical(value)) == owned or Path(layout.logical(value)).is_relative_to(owned)
+                  for value in job.get('specs', [])),
                   'La spec pertenece a un trabajo abierto: ' + job.get('id', path.parent.name) +
                   '. Conserva su autorización y continúa ese trabajo.')
 
 
-def write_document(h, doc, status):
-    path = doc['path']
-    h.require(path.read_bytes() == doc['raw'], 'La spec cambió durante la operación; vuelve a revisarla.')
-    raw = with_status(doc['text'], status).encode()
-    if raw == doc['raw']:
-        return
-    descriptor, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
-    temporary = Path(name)
-    try:
-        with os.fdopen(descriptor, 'wb') as stream:
-            stream.write(raw)
-            stream.flush()
-            os.fsync(stream.fileno())
-        temporary.chmod(path.stat().st_mode & 0o777)
-        h.require(path.read_bytes() == doc['raw'], 'La spec cambió durante la operación; vuelve a revisarla.')
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+def relocation_records(h, operation, excluded=()):
+    """Carry valid receipts across controller-only link/path rewrites.
+
+    User edits never enter this path: valid() first checks the old exact bytes.
+    Preserve the real consent and record its previous version for audit.
+    """
+    updates = {}
+    for path in (h.STORE / 'spec-readiness').glob('*/state.json'):
+        saved = json.loads(path.read_text())
+        relative = saved.get('spec')
+        change = operation['changes'].get(relative)
+        if not change or relative in excluded: continue
+        old = describe(h, relative, change['before'])
+        if not valid(old, saved): continue
+        new = describe(h, change['target'], change['after'])
+        if new['declared'] != READY: continue
+        saved.setdefault('relocations', []).append({'from': relative, 'to': new['relative'],
+             'beforeSha256': old['sha256'], 'afterSha256': new['sha256'], 'at': time.time()})
+        saved['spec'] = new['relative']
+        saved['approval'].update(documentSha256=new['sha256'], bodySha256=new['bodySha256'])
+        target = record_path(h, new['key'])
+        updates[target] = saved
+        if target != path: updates[path] = {'spec': relative, 'supersededBy': str(target), 'revokedAt': time.time()}
+    return updates
+
+
+def move(h, doc, stage, status, update=None):
+    layout = h.runtime_module('spec_layout')
+    operation = layout.plan(h, {doc['relative']: stage},
+                            {doc['relative']: with_status(doc['text'], status).encode()})
+    change = operation['changes'].get(doc['relative'])
+    new = describe(h, change['target'], change['after']) if change else doc
+    updates = relocation_records(h, operation, [doc['relative']] if update else [])
+    if update:
+        updates[record_path(h, new['key'])] = update(new)
+        legacy = record_path(h, digest(doc['relative'].encode()))
+        if legacy != record_path(h, new['key']) and legacy.exists():
+            updates[legacy] = {'spec': doc['relative'], 'supersededBy': new['relative'], 'revokedAt': time.time()}
+    layout.apply(h, operation, updates)
+    return new
 
 
 def session(h, sid):
@@ -143,17 +176,16 @@ def session(h, sid):
 def request(h, value, sid):
     sid = session(h, sid)
     doc = document(h, value)
-    with h.lock('spec-' + doc['key']):
+    with h.lock(), h.lock('spec-' + doc['key']):
         doc = document(h, value)
         require_idle(h, doc)
         saved = record(h, doc)
         if valid(doc, saved):
             return {**inspect(h, value), 'reply': None, 'next': 'Esperar una orden de implementación; no iniciar automáticamente.'}
         h.require(doc['declared'] in {DRAFT, READY}, 'Estado de spec no revisable: ' + doc['declared'])
-        write_document(h, doc, DRAFT)
-        doc = document(h, value)
+        doc = move(h, doc, 'Draft', DRAFT)
         prior = saved.get('request', {})
-        if (saved.get('approval') or prior.get('sessionId') != sid or prior.get('bodySha256') != doc['bodySha256']
+        if (saved.get('spec') != doc['relative'] or saved.get('approval') or prior.get('sessionId') != sid or prior.get('bodySha256') != doc['bodySha256']
                 or prior.get('documentSha256') != doc['sha256']):
             saved = {'spec': doc['relative'], 'request': {
                 'sessionId': sid, 'bodySha256': doc['bodySha256'], 'documentSha256': doc['sha256'],
@@ -176,7 +208,7 @@ def consent(h, event, match):
     h.require(len(candidates) == 1, 'Confirmación de spec vencida o de otra conversación; solicita la revisión vigente.')
     value = candidates[0]['spec']
     doc = document(h, value)
-    with h.lock('spec-' + doc['key']):
+    with h.lock(), h.lock('spec-' + doc['key']):
         doc = document(h, value)
         require_idle(h, doc)
         saved = record(h, doc)
@@ -196,10 +228,13 @@ def consent(h, event, match):
 def accept(h, value, sid):
     sid = session(h, sid)
     doc = document(h, value)
-    with h.lock('spec-' + doc['key']):
+    with h.lock(), h.lock('spec-' + doc['key']):
         doc = document(h, value)
         require_idle(h, doc)
         saved = record(h, doc)
+        if valid(doc, saved):
+            h.require(saved['approval']['sessionId'] == sid, 'La autorización pertenece a otra sesión.')
+            return inspect(h, value)
         req, consent = saved.get('request', {}), saved.get('consent', {})
         h.require(consent.get('source') == 'UserPromptSubmit'
                   and consent.get('sessionId') == req.get('sessionId') == sid
@@ -207,25 +242,49 @@ def accept(h, value, sid):
                   and consent.get('bodySha256') == req.get('bodySha256') == doc['bodySha256']
                   and consent.get('at', 0) >= req.get('at', float('inf')),
                   'Falta autorización explícita vigente del usuario para esta versión de la spec.')
-        if valid(doc, saved):
-            return inspect(h, value)
         h.require(doc['sha256'] == req.get('documentSha256'), 'La spec cambió después de autorizarla; repite la revisión.')
-        write_document(h, doc, READY)
-        approved = document(h, value)
-        saved['approval'] = {'source': 'UserPromptSubmit', 'sessionId': sid, 'at': consent['at'],
-                             'bodySha256': approved['bodySha256'], 'documentSha256': approved['sha256']}
-        h.atomic(record_path(h, doc['key']), saved)
-    return inspect(h, value)
+        def approve(approved):
+            saved['spec'] = approved['relative']
+            saved['approval'] = {'source': 'UserPromptSubmit', 'sessionId': sid, 'at': consent['at'],
+                                 'bodySha256': approved['bodySha256'], 'documentSha256': approved['sha256'],
+                                 'reviewedSpec': doc['relative'], 'reviewedSha256': doc['sha256']}
+            return saved
+        approved = move(h, doc, 'Ready', READY, approve)
+    return inspect(h, approved['relative'])
 
 
 def draft(h, value):
     doc = document(h, value)
-    with h.lock('spec-' + doc['key']):
+    with h.lock(), h.lock('spec-' + doc['key']):
         doc = document(h, value)
         require_idle(h, doc)
-        write_document(h, doc, DRAFT)
-        h.atomic(record_path(h, doc['key']), {'spec': doc['relative'], 'revokedAt': time.time()})
-    return inspect(h, value)
+        doc = move(h, doc, 'Draft', DRAFT,
+                   lambda new: {'spec': new['relative'], 'revokedAt': time.time()})
+    return inspect(h, doc['relative'])
+
+
+def organize(h, apply=False):
+    """Explicit legacy migration; install alone never reclassifies specs."""
+    layout = h.runtime_module('spec_layout')
+    with h.lock():
+        h.require(not layout.active_inputs(h), 'Hay trabajos activos; organización aplazada.')
+        roots = [h.ROOT / 'specs', *(h.ROOT / 'specs' / name for name in ('Draft', 'Ready'))]
+        candidates = {p for root in roots for p in root.glob('*.md')
+                      if p.name.lower() not in {'readme.md', 'plantilla-spec.md'}}
+        candidates.update(p for p in (h.ROOT / 'specs').rglob('spec.md')
+                          if 'Done' not in p.relative_to(h.ROOT / 'specs').parts)
+        selections, contents, results = {}, {}, []
+        for path in sorted(candidates):
+            doc = document(h, str(path))
+            approved = valid(doc, record(h, doc))
+            stage = 'Done' if doc['declared'] == 'terminado' else 'Ready' if approved else 'Draft'
+            selections[doc['relative']] = stage
+            if stage != 'Done': contents[doc['relative']] = with_status(doc['text'], READY if approved else DRAFT).encode()
+            results.append({'from': doc['relative'], 'to': layout.staged(doc['relative'], stage),
+                            'authorized': approved, 'stage': stage})
+        operation = layout.plan(h, selections, contents)
+        backup = layout.apply(h, operation, relocation_records(h, operation)) if apply else None
+        return {'applied': apply, 'specs': results, 'changedFiles': len(operation['changes']), 'backup': backup}
 
 
 def verify_copy(h, job):

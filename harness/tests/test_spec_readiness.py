@@ -1,4 +1,6 @@
 import argparse
+import contextlib
+import io
 import json
 from pathlib import Path
 import shutil
@@ -22,8 +24,11 @@ class SpecReadinessTests(unittest.TestCase):
         self.ctx = h.CoreContext()
         self.mod = h.runtime_module('spec_readiness')
         self.chat = h.runtime_module('conversation')
-        self.path = self.root / 'specs/feature.md'
-        self.path.write_text('# Feature\n\nEstado: borrador\n\n## Criterios\nAC-1: initial behavior.\n')
+        (self.root / 'specs/feature.md').write_text('# Feature\n\nEstado: borrador\n\n## Criterios\nAC-1: initial behavior.\n')
+
+    @property
+    def path(self):
+        return h.runtime_module('spec_layout').resolve(self.ctx, 'specs/feature.md')
 
     def tearDown(self):
         self.fixture.tearDown()
@@ -71,7 +76,7 @@ class SpecReadinessTests(unittest.TestCase):
         self.assertIn('Estado: lista para implementar', self.path.read_text())
         self.assertEqual(self.mod.accept(self.ctx, 'specs/feature.md', SID), result)
         self.assertEqual(before, sorted((h.STORE / 'runs').glob('*/state.json')))
-        proof = self.mod.require_all(self.ctx, [str(self.path)])['specs/feature.md']
+        proof = self.mod.require_all(self.ctx, [str(self.path)])['specs/Ready/feature.md']
         self.assertEqual(proof['sessionId'], SID)
         self.assertEqual(proof['documentSha256'], h.sha(self.path))
         # An approved document is usable by another implementation session.
@@ -166,11 +171,28 @@ class SpecReadinessTests(unittest.TestCase):
         self.approve()
         proof = self.mod.require_all(self.ctx, ['specs/feature.md'])
         tree = self.root / 'prepared'; (tree / 'specs').mkdir(parents=True)
-        copied = tree / 'specs/feature.md'; shutil.copy2(self.path, copied)
+        copied = tree / 'specs/Ready/feature.md'; copied.parent.mkdir(); shutil.copy2(self.path, copied)
         job = {'worktree': str(tree), 'specReadiness': proof}
         self.mod.verify_copy(self.ctx, job)
         copied.write_text(copied.read_text() + 'Late source edit.\n')
         with self.assertRaisesRegex(h.Blocked, 'versión autorizada'): self.mod.verify_copy(self.ctx, job)
+
+    def test_prepare_uses_ready_input_without_duplicate_or_partial_git_staging(self):
+        shutil.copy2(core.MODULE.parent / 'publication.py', self.root / 'harness/publication.py')
+        for name in ('.claude/skills/harness', '.claude/agents'):
+            (self.root / name).mkdir(parents=True)
+        approved = self.approve()
+        args = self.args()
+        with patch.object(h, 'graph'), patch.object(shutil, 'which', return_value='/usr/bin/true'), contextlib.redirect_stdout(io.StringIO()):
+            h.prepare(args)
+        job = h.load(args.job); tree = Path(job['worktree'])
+        self.assertEqual(job['stage'], 'implementing')
+        self.assertFalse((tree / 'specs/feature.md').exists())
+        self.assertEqual((tree / approved['spec']).read_bytes(), self.path.read_bytes())
+        self.assertTrue(job['specStatusInputs'][approved['spec']]['tracked'])
+        staged = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], cwd=tree, text=True).splitlines())
+        unstaged = set(subprocess.check_output(['git', 'diff', '--name-only'], cwd=tree, text=True).splitlines())
+        self.assertFalse(staged & unstaged)
 
 
 class SpecInstallationTests(unittest.TestCase):
@@ -193,6 +215,11 @@ class SpecInstallationTests(unittest.TestCase):
         portable.installer.install(self.target, 'auto', update=True)
         self.assertEqual(path.read_text(), expected)
         self.assertEqual((self.target / 'CLAUDE.md').read_text().count('## Autorización de specs'), 1)
+        self.assertEqual((self.target / 'CLAUDE.md').read_text().count('## Carpetas de specs'), 1)
+        for stage in ('Draft', 'Ready', 'Done'):
+            self.assertTrue((self.target / 'specs' / stage / '.gitkeep').is_file())
+        for name in ('harness/config.json', 'harness/claude-settings.json', '.harness/private.json'):
+            self.assertEqual(subprocess.run(['git', 'check-ignore', '-q', name], cwd=self.target).returncode, 0)
         spec = self.target / 'specs/new feature.md'; spec.write_text(expected)
         cli = ['python3', '-B', str(self.target / 'harness/harness.py')]
         request = subprocess.run(cli + ['spec-review', str(spec), '--session-id', SID], text=True, capture_output=True)

@@ -10,7 +10,7 @@ import shlex
 
 BUNDLE = Path(__file__).resolve().parent
 PRESETS = ('auto', 'web-no-db', 'node-postgres', 'sistema-juridico')
-REFERENCE = '\n## Harness de Claude\n\nFlujo opcional por trabajo: [guía y configuración](docs/harness-claude-spec.md). Empieza con `/harness setup`, autoriza la spec con `/harness ready specs/mi-feature.md` y luego inicia `/harness specs/mi-feature.md`; no ejecutarlo automáticamente.\n'
+REFERENCE = '\n## Harness de Claude\n\nFlujo opcional por trabajo: [guía y configuración](docs/harness-claude-spec.md). Empieza con `/harness setup`, autoriza la spec con `/harness ready specs/Draft/mi-feature.md` y luego inicia `/harness specs/Ready/mi-feature.md`; no ejecutarlo automáticamente.\n'
 SPEC_POLICY = ('\n## Autorización de specs\n\n'
                'Toda spec nueva empieza con `Estado: borrador`, incluida la creada desde una plantilla. '
                'Completarla o revisarla no permite marcarla lista. Antes de iniciar un trabajo, solo el '
@@ -20,7 +20,8 @@ SPEC_POLICY = ('\n## Autorización de specs\n\n'
                'Antes de editar una spec autorizada que aún no tiene trabajo, ejecuta '
                '`python3 harness/harness.py spec-draft <ruta-spec>`. Cualquier edición posterior invalida '
                'la autorización anterior. No invoques el hook ni escribas recibos para simular consentimiento.\n')
-IGNORE = ['.harness/', '.worktrees/', 'harness/**/__pycache__/', '.claude/settings.local.json']
+IGNORE = ['.harness/', '.migration-private/', '.worktrees/', 'harness/**/__pycache__/',
+          'harness/config.json', 'harness/claude-settings.json', '.claude/settings.local.json']
 
 
 def conversation_settings(target):
@@ -102,6 +103,9 @@ def _install(target, preset, dry_run=False, update=False, max_cycles=None):
     if template.exists() and not template.is_file(): raise ValueError('Plantilla de spec no regular.')
     content = template.read_text() if template.exists() else (BUNDLE.parent/'specs/plantilla-spec.md').read_text()
     generated['specs/plantilla-spec.md'] = readiness.with_status(content, readiness.DRAFT).encode()
+    for stage in ('Draft', 'Ready', 'Done'):
+        marker = destination('specs/' + stage + '/.gitkeep')
+        if not marker.exists(): generated['specs/' + stage + '/.gitkeep'] = b''
     if update:
         import importlib.util
         spec = importlib.util.spec_from_file_location('report_paths', BUNDLE/'report_paths.py')
@@ -165,6 +169,13 @@ def _install(target, preset, dry_run=False, update=False, max_cycles=None):
     original_text = text
     if 'docs/harness-claude-spec.md' not in text: text += REFERENCE
     if '## Autorización de specs' not in text: text += SPEC_POLICY
+    if '## Carpetas de specs' not in text:
+        text += ('\n## Carpetas de specs\n\nCrea specs en `specs/Draft/`. El controlador las mueve a '
+                 '`specs/Ready/` al autorizar y a `specs/Done/` al terminar. '
+                 '`spec-draft` devuelve la spec a Draft; usa la ruta que devuelve el controlador. '
+                 'La carpeta Ready por sí sola no autoriza. Para organizar specs anteriores, '
+                 'consulta `python3 harness/harness.py spec-organize`; `--apply` aplica el plan '
+                 'con respaldo y sin trabajos activos.\n')
     if text != original_text:
         if backup and claude.exists():
             saved = backup/'CLAUDE.md'; saved.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(claude, saved)

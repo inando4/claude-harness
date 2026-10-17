@@ -2,6 +2,10 @@
 
 Estado: borrador
 
+Guarda esta spec en `specs/Draft/<nombre>.md` o, si tiene recursos propios,
+en `specs/Draft/<nombre>/spec.md`. El controlador la mueve a `Ready` al autorizar
+y a `Done` al cerrar; usa siempre la ruta que devuelve cada comando.
+
 Crear, completar o revisar esta spec no autoriza su implementación. Solo el usuario
 puede habilitar la versión revisada mediante `/harness ready <ruta-spec>` y la
 confirmación `LISTA PARA IMPLEMENTAR <código>` que devuelve el controlador.
