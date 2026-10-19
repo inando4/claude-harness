@@ -187,6 +187,41 @@ class BundleCompletionTests(unittest.TestCase):
         self.assertEqual(self.s['specCompletion'][self.relative]['source'], 'published_in_pr')
         self.assertTrue((h.jobdir(self.s['id']) / 'artifacts/completed-specs/specs/Done/topic/pic.svg').exists())
 
+    def test_unversioned_spec_reaches_done_in_pr_and_retires_after_merge(self):
+        relative = 'specs/Ready/new.md'
+        for tree in (self.fx.root, self.fx.back): (tree / relative).write_text('# New\nEstado: lista para implementar\n')
+        self.s['specs'] = [relative]
+        self.mod.capture(self.ctx, self.s); self.mod.stage_tracked(self.ctx, self.s)
+        env = self.fx.pub.build_index(self.ctx, self.s, 'back', freeze=False)
+        published = self.fx.pub.git(self.ctx, self.fx.back, 'ls-files', '--', 'specs', env=env).stdout.decode().split()
+        self.assertIn('specs/Done/new.md', published); self.assertNotIn(relative, published)
+        self.assertIn('Estado: TERMINADO', (self.fx.back / 'specs/Done/new.md').read_text())
+        self.mod.prepare(self.ctx, self.s); self.mod.complete(self.ctx, self.s)
+        self.assertTrue((self.fx.root / relative).exists())
+        self.assertNotIn('local', self.s['specCompletion'][relative])
+        self.s.pop('specCompletion'); self.s['publication']['phase'] = 'cleaning'
+        self.mod.complete(self.ctx, self.s)
+        self.assertFalse((self.fx.root / relative).exists()); self.assertFalse((self.fx.root / 'specs/Done/new.md').exists())
+        self.assertEqual(self.s['specCompletion'][relative]['local'], 'removed_after_merge')
+
+    def test_unversioned_bundle_retires_only_unchanged_untracked_copies(self):
+        self.mod.capture(self.ctx, self.s); self.mod.stage_tracked(self.ctx, self.s)
+        self.assertTrue((self.fx.back / 'specs/Done/topic/pic.svg').exists())
+        self.assertFalse((self.fx.back / 'specs/Ready/topic').exists())
+        self.mod.prepare(self.ctx, self.s); self.s['publication']['phase'] = 'cleaning'
+        asset = self.fx.root / 'specs/Ready/topic/pic.svg'; asset.write_text('New user image')
+        self.mod.complete(self.ctx, self.s)
+        self.assertEqual(asset.read_text(), 'New user image')
+        self.assertEqual(self.s['specCompletion'][self.relative]['local'], 'preserved_user_changes')
+        asset.write_text('<svg>resource</svg>'); self.fx.git(self.fx.root, 'add', '--', 'specs/Ready/topic')
+        self.mod.complete(self.ctx, self.s)
+        self.assertTrue((self.fx.root / self.relative).exists())
+        self.assertEqual(self.s['specCompletion'][self.relative]['local'], 'tracked_pull_required')
+        self.fx.git(self.fx.root, 'rm', '-q', '--cached', '-r', '--', 'specs/Ready/topic')
+        self.mod.complete(self.ctx, self.s)
+        self.assertFalse((self.fx.root / 'specs/Ready/topic').exists()); self.assertTrue((self.fx.root / 'specs/Ready').exists())
+        self.assertEqual(self.s['specCompletion'][self.relative]['local'], 'removed_after_merge')
+
     def test_ignored_bundle_moves_together_and_retries(self):
         with (self.fx.root / '.git/info/exclude').open('a') as stream: stream.write('specs/Ready/topic/\nspecs/Done/topic/\n')
         self.mod.capture(self.ctx, self.s); self.mod.prepare(self.ctx, self.s)

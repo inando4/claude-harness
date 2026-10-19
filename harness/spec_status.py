@@ -98,6 +98,7 @@ def complete(h,s):
             except (OSError,ValueError,h.Blocked):result['source']='preserved_unavailable_changed_or_collision'
         elif record.get('stagedPath'):
             result.update(source='published_in_pr',path=record['stagedPath'])
+            retire(h,s,relative,record,result)
         results[relative]=result
     h.save(s,'specs_completed')
 
@@ -117,7 +118,7 @@ def complete_bundle(h,s,relative,record,result):
         dest=h.safe_path(h.jobdir(s['id']),'artifacts/completed-specs/'+str(target))
         dest.parent.mkdir(parents=True,exist_ok=True,mode=0o700);dest.write_bytes(raw);dest.chmod(0o600)
     if record.get('stagedPath'):
-        result.update(source='published_in_pr',path=record['stagedPath']);return
+        result.update(source='published_in_pr',path=record['stagedPath']);retire(h,s,relative,record,result);return
     if not record['localIgnored']:return
     try:
         expected=record.get('completionMembers',{})
@@ -145,6 +146,37 @@ def complete_bundle(h,s,relative,record,result):
     except (OSError,ValueError,h.Blocked):result['source']='preserved_unavailable_changed_or_collision'
 
 
+def retire(h,s,relative,record,result):
+    """Drop the unchanged untracked Ready copy once its PR is merged.
+
+    The next pull brings the Done version; a local Done copy would abort that
+    pull. Tracked sources, ignored resources and user changes stay in place.
+    """
+    if s.get('publication',{}).get('phase')!='cleaning':return
+    layout=h.runtime_module('spec_layout');git=h.publication_module().git;unit=layout.unit(relative)
+    try:
+        with h.lock():
+            h.require(not any(layout.unit(layout.logical(v))==layout.unit(layout.logical(relative))
+                              for v in layout.active_inputs(h,exclude_job=s['id'])),'Spec de un trabajo abierto')
+            if not (h.ROOT/unit).exists() and not (h.ROOT/unit).is_symlink():
+                result['local']='absent';return
+            expected=record.get('members') or {relative:record['sourceSha256']}
+            names=layout.input_files(h,[relative])
+            if set(names)!=set(expected) or any(h.sha(h.ROOT/name)!=value for name,value in expected.items()):
+                result['local']='preserved_user_changes';return
+            if any(git(h,h.ROOT,'ls-files','--error-unmatch','--',name,check=False).returncode==0 for name in names):
+                result['local']='tracked_pull_required';return
+            if any(git(h,h.ROOT,'check-ignore','-q','--',name,check=False).returncode==0 for name in names):
+                result['local']='preserved_local_resources';return
+            for name in names:(h.ROOT/name).unlink()
+            folders=[h.ROOT/unit,*(h.ROOT/unit).rglob('*')] if (h.ROOT/unit).is_dir() else []
+            for folder in sorted(folders,key=lambda p:len(p.parts),reverse=True):
+                try:folder.rmdir()
+                except OSError:pass
+        result['local']='removed_after_merge'
+    except (OSError,ValueError,h.Blocked):result['local']='preserved_unavailable_changed_or_collision'
+
+
 def done_path(relative):
     p=Path(relative)
     if not p.parts or p.parts[0]!='specs':return str(p.parent/'Done'/p.name)
@@ -169,9 +201,11 @@ def stage_tracked(h,s):
     layout=h.runtime_module('spec_layout')
     ctx=layout.worktree_context(h,s)
     for relative,record in s.get('specStatusInputs',{}).items():
-        if not record.get('tracked') or record.get('stagedPath'):continue
+        # Versionable inputs, tracked or new, reach Done inside the approved PR.
+        if record.get('localIgnored') or record.get('stagedPath'):continue
         target_relative=done_path(relative);source=h.safe_path(tree,relative)
         h.require(source.is_file() and not (tree/relative).is_symlink(),'Spec versionada ausente/enlazada')
+        if not record.get('tracked'):h.publication_module().git(h,tree,'add','--',str(layout.unit(relative)))
         operation=layout.plan(ctx,{relative:'Done'},{relative:marked(source.read_bytes())})
         h.require(operation['moves'],'La spec ya está en Done.')
         layout.stage_move(h,tree,operation)
