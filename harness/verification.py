@@ -107,7 +107,7 @@ def components(h,s,step):
         db={k:s.get(k) for k in ('containerId','dbPort','database','schema','snapshotSha256')}
         db['config']=h.database_config()
     values = {'job':s['id'],'inputs':inputs(h,s,step),'step':step,'dependencies':dependency,
-                   'specs':{p:h.sha(h.safe_path(h.repository_root(s),p)) for p in s.get('specs',[])},
+                   'specs':{p:h.runtime_module('spec_status').fingerprint(h,s,p) for p in s.get('specs',[])},
                    'tools':tool_versions(h,s,step),'env':h.config().get('env',{}),'processEnv':h.clean_env(),
                    'db':db,'ports':s.get('ports'),'executor':h.controller_version()}
     return {name: digest(value) for name, value in values.items()}

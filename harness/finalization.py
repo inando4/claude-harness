@@ -170,7 +170,7 @@ def cleanup(h,s):
                 mod.git(h,item['source'],'update-ref','-d',ref,item['commit'])
             item['branchRemoved']=True;h.save(s,'cleanup_branch_removed_'+name)
     h.runtime_module('spec_status').complete(h,s)
-    pub['phase']='completed';s['stage']='completed';s.pop('blockedPhase',None)
+    pub['phase']='completed';s['stage']='completed';s.pop('blockedPhase',None);s.pop('finalizationError',None)
     h.save(s,'publication_and_cleanup_completed')
 
 

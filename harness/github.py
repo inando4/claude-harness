@@ -134,7 +134,7 @@ def ensure_pr(h,s,name):
         body=directory/'pr.md'
         # Specs and prior verified summaries are already available; no extra agent to draft a PR.
         titles=[]
-        for relative in s.get('specs',[]):
+        for relative in h.spec_paths(s):
             text=(Path(s['worktree'])/relative).read_text()
             titles.append(next((v.lstrip('# ').strip() for v in text.splitlines() if v.startswith('# ')),Path(relative).stem))
         title=(' / '.join(titles) or s['id'])[:180]
