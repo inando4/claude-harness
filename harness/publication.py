@@ -157,7 +157,7 @@ def inventory(h,tree):
 def index_ready(h,s):
     for name,tree in h.repository_roots(s).items():
         conflicts=out(h,tree,'diff','--name-only','--diff-filter=U').splitlines()
-        partial=set(out(h,tree,'diff','--cached','--name-only').splitlines()) & set(out(h,tree,'diff','--name-only').splitlines())
+        partial=set(out(h,tree,'diff','--cached','--no-renames','--name-only').splitlines()) & set(out(h,tree,'diff','--name-only').splitlines())
         h.require(not conflicts and not partial,'Índice Git requiere revisión en '+name+': '+', '.join(sorted(set(conflicts)|partial))+'. Conserva contenido y resuelve el índice; no exige repetir QA por sí solo.')
 
 
@@ -176,7 +176,27 @@ def evidence(h,s):
                    'approval':s['approval'],'config':s.get('configVersion'),'controller':h.controller_version()})
 
 
+def realign(h,s):
+    """Sync a normal index left at the base by a cut between commit and read-tree.
+
+    Only the frozen commit qualifies, and only when the working tree already
+    holds HEAD's content for every stale entry; otherwise nothing is reset.
+    """
+    for item in s.get('publication',{}).get('repos',{}).values():
+        tree=Path(item['worktree'])
+        if item.get('worktreeRemoved') or not tree.is_dir() or not item.get('tree') or not item.get('headBefore'):continue
+        if (out(h,tree,'rev-parse','HEAD')==item['headBefore'] or out(h,tree,'rev-parse','HEAD^{tree}')!=item['tree'] or
+                out(h,tree,'rev-parse','HEAD^')!=item['headBefore']):continue
+        for path in filter(None,git(h,tree,'diff','--cached','--no-renames','--name-only','-z','HEAD').stdout.decode().split('\0')):
+            head=git(h,tree,'rev-parse','--verify','-q','HEAD:'+path,check=False).stdout.decode().strip() or None
+            p=tree/path
+            current=out(h,tree,'hash-object','--',path) if p.is_file() and not p.is_symlink() else None
+            h.require(current==head,'El índice de '+str(tree)+' no coincide con el commit publicado en '+path+'; revisa antes de reanudar.')
+        git(h,tree,'read-tree','HEAD')
+
+
 def retry(h,s):
+    realign(h,s)
     h.require(s.get('approvalEvidence') and evidence(h,s)==s['approvalEvidence'],'Evidencia de aprobación ausente o modificada: revalidar.')
     pub=s['publication']
     # Never discard a commit checkpoint or reconcile a crash by rewriting HEAD.
@@ -212,7 +232,7 @@ def build_index(h,s,name,freeze=True):
     disposable=pub['policy']['repositories'][name].get('disposablePaths',[])
     assert_history(h,tree,item['base'],disposable)
     # The private index must never discard staging-only work (including partial staging).
-    staged=set(out(h,tree,'diff','--cached','--name-only').splitlines())
+    staged=set(out(h,tree,'diff','--cached','--no-renames','--name-only').splitlines())
     unstaged=set(out(h,tree,'diff','--name-only').splitlines())
     h.require(not (staged & unstaged), 'Hay contenido parcialmente preparado en Git; revisa el índice antes de publicar.')
     for path,overlay in item['overlays'].items():
@@ -231,7 +251,8 @@ def build_index(h,s,name,freeze=True):
     env=dict(os.environ,GIT_INDEX_FILE=str(index),GRAPHIFY_SKIP_HOOK='1')
     git(h,tree,'read-tree','HEAD',env=env)
     # Hash only changed/new files, not every source file on every publication retry.
-    names=set(git(h,tree,'diff','HEAD','--name-only','-z').stdout.decode().split('\0'))
+    # Without --no-renames a staged move lists only its destination and HEAD keeps the source.
+    names=set(git(h,tree,'diff','HEAD','--no-renames','--name-only','-z').stdout.decode().split('\0'))
     names.update(git(h,tree,'ls-files','-z','--others','--exclude-standard').stdout.decode().split('\0'))
     names.update(item['overlays'])
     for path in sorted(names- {''}):
@@ -300,12 +321,13 @@ def commit(h,s,name):
         msg.write_text('feat: '+s['id']+'\n')
         git(h,tree,'commit','-F',str(msg),env=env)
         h.require(out(h,tree,'rev-parse','HEAD^{tree}')==item['tree'],'Un hook cambió el commit; no se publicará.')
+    # Synchronize the normal index with HEAD before any check can stop; keep
+    # controller overlays in the working tree.
+    git(h,tree,'read-tree','HEAD')
     unchanged(h,s)
     item['commit']=out(h,tree,'rev-parse','HEAD')
     item['changed']=out(h,tree,'rev-parse',item['base']+'^{tree}')!=item['tree']
     h.require(item['changed'] or item['commit']==item['base'],'Diff vacío pero hay commits locales sin PR; conserva y revisa el historial.')
-    # Synchronize the normal index with HEAD; keep controller overlays in the working tree.
-    git(h,tree,'read-tree','HEAD')
     h.save(s,'publication_commit_'+name)
 
 
@@ -313,6 +335,7 @@ def publish(h,s):
     h.require_job_config(s)
     pub=s['publication'];h.require(s.get('approval') and pub.get('handoff'),'Falta entrega autorizada a publicación.')
     h.require(pub['policy']==settings(h),'Cambió política de publicación.')
+    realign(h,s)
     unchanged(h,s)
     if h.runtime_module('synchronization').enabled(s):
         states=[h.github_module().cleanup_pr(h,v,pub['policy']['repositories'][n]) for n,v in pub['repos'].items() if v.get('pr') and v.get('pushed')]
@@ -355,5 +378,6 @@ def publish(h,s):
         item['pr']=github.ensure_pr(h,s,name)
         h.save(s,'publication_pr_'+name)
     pub['phase']='awaiting_ci';s['stage']='awaiting_ci'
+    s.pop('blockedPhase',None);s.pop('finalizationError',None)
     h.save(s,'publication_all_prs_created')
     print(json.dumps({name:v.get('pr') for name,v in pub['repos'].items() if v['changed']},ensure_ascii=False))

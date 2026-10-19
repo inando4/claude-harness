@@ -49,6 +49,12 @@ class SynchronizationTests(unittest.TestCase):
             self.assertIn('local harness integration checkpoint',history)
         self.assertEqual(self.mod.sync(self.ctx,self.s)['status'],'current')
 
+    def test_upstream_rename_removes_the_old_path(self):
+        self.fx.git(self.fx.root,'mv','--','docs/readme.md','docs/guide.md');self.fx.git(self.fx.root,'commit','-qm','Rename guide')
+        self.fx.git(self.fx.root,'push','-q','origin','main')
+        self.assertEqual(self.mod.sync(self.ctx,self.s)['status'],'integrated')
+        self.assertTrue((self.fx.back/'docs/guide.md').is_file());self.assertFalse((self.fx.back/'docs/readme.md').exists())
+
     def test_same_base_does_not_create_commit_or_invoke_qa(self):
         before=self.fx.git(self.fx.back,'rev-parse','HEAD')
         with patch.object(h,'qa_start',side_effect=AssertionError('unneeded QA')):

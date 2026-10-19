@@ -206,11 +206,20 @@ def stage_tracked(h,s):
         target_relative=done_path(relative);source=h.safe_path(tree,relative)
         h.require(source.is_file() and not (tree/relative).is_symlink(),'Spec versionada ausente/enlazada')
         if not record.get('tracked'):h.publication_module().git(h,tree,'add','--',str(layout.unit(relative)))
-        operation=layout.plan(ctx,{relative:'Done'},{relative:marked(source.read_bytes())})
+        before=source.read_bytes()
+        operation=layout.plan(ctx,{relative:'Done'},{relative:marked(before)})
         h.require(operation['moves'],'La spec ya está en Done.')
         layout.stage_move(h,tree,operation)
         for item in s.get('publication',{}).get('repos',{}).values():
             if Path(item['worktree'])!=tree:continue
             for key in ('copiedSpecs','finalSpecs'):
                 if key in item:item[key]={str(layout.mapped(Path(p),operation['moves'])):v for p,v in item[key].items()}
-        record['stagedPath']=target_relative;h.save(s,'spec_staged_done')
+        record.update(stagedPath=target_relative,stagedFrom=sha(before),stagedSha256=h.sha(h.safe_path(tree,target_relative)))
+        h.save(s,'spec_staged_done')
+
+
+def fingerprint(h,s,relative):
+    """Content identity of an input spec that survives the controller's own move to Done."""
+    record=s.get('specStatusInputs',{}).get(relative,{})
+    value=h.sha(h.safe_path(h.repository_root(s),record.get('stagedPath',relative)))
+    return record['stagedFrom'] if record.get('stagedPath') and value==record.get('stagedSha256') else value

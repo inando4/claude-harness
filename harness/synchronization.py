@@ -135,7 +135,7 @@ def begin(h,s,targets):
         h.require(pub.out(h,tree,'symbolic-ref','--short','HEAD')==item['branch'],'Cambió rama del trabajo.')
         h.require(pub.git(h,tree,'merge-base','--is-ancestor',base,targets[name],check=False).returncode==0,
                   'El remoto reescribió su historial; no se integra automáticamente.')
-        incoming=pub.git(h,tree,'diff','--name-only','-z',base,targets[name]).stdout.decode().split('\0')
+        incoming=pub.git(h,tree,'diff','--no-renames','--name-only','-z',base,targets[name]).stdout.decode().split('\0')
         h.require(not any(pub.internal(p) for p in incoming if p),'El remoto cambió código del harness; requiere actualizar fuera de trabajos activos.')
         # The publication filter removes overlays/secrets before making a local checkpoint.
         env=pub.build_index(h,s,name,freeze=False)
@@ -181,7 +181,7 @@ def prepare_shadow(h,s,name,row):
 def plan_apply(h,s,name,row):
     pub=h.publication_module();item=s['publication']['repos'][name];tree=Path(item['worktree'])
     h.require(pub.inventory(h,tree)==row['originalInventory'],'Cambió el worktree mientras se integraba; conserva ambos árboles y revisa antes de aplicar.')
-    names=set(pub.git(h,tree,'diff','--name-only','-z',row['checkpoint'],row['result']).stdout.decode().split('\0'))-{''}
+    names=set(pub.git(h,tree,'diff','--no-renames','--name-only','-z',row['checkpoint'],row['result']).stdout.decode().split('\0'))-{''}
     names.update(item['overlays']);writes={};overlays={}
     for path in sorted(names):
         h.require(not pub.forbidden(path),'Integración contiene archivo interno/sensible: '+path)

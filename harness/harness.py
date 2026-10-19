@@ -228,9 +228,14 @@ def step_event(s, identifier, status, reason, duration):
     save(s,'step_'+status)
 
 
+def spec_paths(s):
+    # Approved inputs may already be in specs/Done inside the worktree.
+    return [s.get('specStatusInputs',{}).get(p,{}).get('stagedPath',p) for p in s.get('specs',[])]
+
+
 def diagnostic(s):
     value=public(s)
-    value['specs']=[s.get('specStatusInputs',{}).get(p,{}).get('stagedPath',p) for p in s.get('specs',[])]
+    value['specs']=spec_paths(s)
     value['execution']=runtime_module('execution').observed(s)
     value['synchronization']=runtime_module('synchronization').brief(s)
     value.update(attempt=s.get('attempt'),steps=s.get('steps',[]),currentCommand=s.get('currentCommand'),
@@ -1067,7 +1072,7 @@ def qa_template(s):
 def brief(s):
     cfg=config()
     value={k:s.get(k) for k in ('id','stage','worktrees','worktree','specs','qaVersion','approvedCandidate','testAccount','ports','url','cycles')}
-    value['specs']=[s.get('specStatusInputs',{}).get(p,{}).get('stagedPath',p) for p in s.get('specs',[])]
+    value['specs']=spec_paths(s)
     value['execution']=runtime_module('execution').observed(s)
     value['synchronization']=runtime_module('synchronization').brief(s)
     value['cycleLimit']=s.get('maxCycles',cfg['maxCorrectionCycles'])
@@ -1163,13 +1168,18 @@ def finish(s):
             for target in re.findall(r'\]\(([^)]+)\)', p.read_text()):
                 target = target.split('#')[0].strip('<>')
                 if not target or '://' in target or target.startswith(('mailto:', 'data:')): continue
-                require((p.parent / target).exists(), f'Enlace local roto en {repo}/{name}: {target}')
+                linked = Path(os.path.normpath(p.parent / target))
+                if not linked.is_relative_to(repository_root(s, repo)):
+                    # Sibling repositories sit beside the user's checkout, not beside job worktrees.
+                    linked = Path(os.path.normpath(repository_root(None, repo) / Path(name).parent / target))
+                require(linked.exists(), f'Enlace local roto en {repo}/{name}: {target}')
     if s.get('publication'):
         try:
             pub=publication_module();ctx=CoreContext()
-            pub.index_ready(ctx,s)
+            # retry() first realigns an index left behind by an interrupted commit.
             if retrying:pub.retry(ctx,s)
             elif s.get('approvalEvidence'):require(pub.evidence(ctx,s)==s['approvalEvidence'],'Cambió evidencia de aprobación: revalidar.')
+            pub.index_ready(ctx,s)
             pub.archive_final_specs(ctx,s)
             for name in s['publication']['repos']:finalization_module().ignored_ready(ctx,s,name)
             publication_module().freeze(CoreContext(),s)
