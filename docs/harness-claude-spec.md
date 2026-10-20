@@ -231,7 +231,7 @@ Solo entonces actúa el documentalista: actualiza lo afectado en `/docs`, specs 
 - **QA:** exige versión vigente, criterios con evidencia, reporte sin hallazgos pendientes, declaración de Chrome visible/inspección visual/migraciones y archivos de evidencia existentes. El reporte exige `exploration` y `repeatableE2E` separados; no acepta exploración MCP como única prueba E2E. Estos controles no demuestran por sí solos que el agente cubrió todos los criterios: revisa el reporte. Los tests que añada QA requieren repetir comprobaciones antes de su pass final.
 - **Aprobación:** huella de archivos nuevos/modificados/eliminados, configuración, snapshot, conexión e historial de migración. Cambiar el producto después de QA impide aprobar hasta revalidar. La documentación espera confirmación interactiva del usuario.
 
-Secuencia: `preparing → implementing → checking → ready_for_qa → qa → awaiting_human_approval → documenting → publishing → awaiting_ci → awaiting_merge → cleaning → completed`. Fallos producen `blocked`, correcciones vuelven a implementación y al agotar intentos se pasa a `paused`. Son cinco ciclos por defecto contando fallos de tests/producto, reportes QA `fail` y feedback. Preguntas, QA `blocked`, timeouts detectados y fallos de migración/infraestructura no consumen ciclos; requieren resolver el impedimento, sin reintentos automáticos. No se mide todavía un presupuesto acumulado de tokens por trabajo.
+Secuencia: `preparing → implementing → checking → ready_for_qa → qa → awaiting_human_approval → documenting → publishing → awaiting_ci → awaiting_merge → cleaning → completed`. Fallos producen `blocked`, correcciones vuelven a implementación y al agotar intentos se pasa a `paused`. Son quince ciclos por defecto contando fallos de tests/producto, reportes QA `fail` y feedback. Preguntas, QA `blocked`, timeouts detectados y fallos de migración/infraestructura no consumen ciclos; requieren resolver el impedimento, sin reintentos automáticos. No se mide todavía un presupuesto acumulado de tokens por trabajo.
 
 ### Recuperar una conversación
 
@@ -477,7 +477,7 @@ La integración no consume un ciclo. Se conservan recibos, instalaciones y logs;
 
 Al retomar un bloqueo remoto, la skill ejecuta `sync` y sigue `lastResult.next`; no hace falta que el usuario lo ejecute en otra terminal. Python no resuelve conflictos de negocio ni despierta por sí mismo una conversación finalizada: si detecta el cambio durante CI/merge, conserva el entorno y requiere continuar la sesión. La limpieza sigue esperando todos los PR fusionados con CI válido. El controlador no impide que un humano fusione desde GitHub entre dos comprobaciones; las reglas del repositorio son la última protección de esa carrera.
 
-El límite predeterminado es cinco ciclos totales. Actualizaciones conservan límites locales salvo petición explícita al instalador: `python3 harness/install.py <backend> --update --max-cycles 5`. Los trabajos antiguos no se migran en caliente al nuevo seguimiento de bases.
+El límite predeterminado es quince ciclos totales. Actualizaciones conservan límites locales salvo petición explícita al instalador: `python3 harness/install.py <backend> --update --max-cycles 15`. Los trabajos antiguos no se migran en caliente al nuevo seguimiento de bases.
 
 
 ## Eficiencia y organización — entrega del 26/09/2026

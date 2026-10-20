@@ -53,7 +53,7 @@ La autorización corresponde a una versión concreta: editar el contenido invali
 
 Las carpetas representan el ciclo **`Draft` → `Ready` → `Done`**: borradores o pendientes de autorización, versiones autorizadas, y trabajos terminados. Para specs con adjuntos usa `specs/Draft/mi-feature/spec.md`; el controlador mueve la carpeta completa, conserva sus recursos y ajusta los enlaces Markdown. Antes de editar una spec autorizada sin trabajo abierto, usa `python3 harness/harness.py spec-draft specs/Ready/mi-feature.md`: vuelve a `Draft` y revoca el permiso.
 
-Usa una conversación por spec. El límite predeterminado es dos trabajos simultáneos y cinco ciclos de corrección por trabajo. Los agentes heredan el modelo elegido en tu sesión. Con publicación habilitada, el controlador abre los PR y espera CI y **tu merge** antes de limpiar; no fusiona automáticamente.
+Usa una conversación por spec. El límite predeterminado es dos trabajos simultáneos y quince ciclos de corrección por trabajo. Los agentes heredan el modelo elegido en tu sesión. Con publicación habilitada, el controlador abre los PR y espera CI y **tu merge** antes de limpiar; no fusiona automáticamente.
 
 ## Actualizar una instalación
 

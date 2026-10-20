@@ -152,17 +152,17 @@ class PortabilityTests(unittest.TestCase):
         self.assertFalse((target/'harness/harness.py').exists())
         self.assertEqual((target/'harness/config.json').read_text(),'existing')
 
-    def test_cycle_limit_is_five_and_update_changes_only_on_explicit_request(self):
+    def test_cycle_limit_is_fifteen_and_update_changes_only_on_explicit_request(self):
         target=self.root/'destination';target.mkdir()
         subprocess.run(['git','init','-q',str(target)],check=True)
         installer.install(target,'web-no-db')
         path=target/'harness/config.json';cfg=json.loads(path.read_text())
-        self.assertEqual(cfg['maxCorrectionCycles'],5)
+        self.assertEqual(cfg['maxCorrectionCycles'],15)
         cfg['maxCorrectionCycles']=3;path.write_text(json.dumps(cfg))
         installer.install(target,'auto',update=True)
         self.assertEqual(json.loads(path.read_text())['maxCorrectionCycles'],3)
-        installer.install(target,'auto',update=True,max_cycles=5)
-        cfg['maxCorrectionCycles']=5
+        installer.install(target,'auto',update=True,max_cycles=15)
+        cfg['maxCorrectionCycles']=15
         self.assertEqual(json.loads(path.read_text()),cfg)
 
     def test_update_blocks_active_jobs_before_changing_files(self):

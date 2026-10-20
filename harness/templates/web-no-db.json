@@ -3,7 +3,7 @@
   "adapter": "adapters/commands.py",
   "needsConfiguration": true,
   "maxJobs": 2,
-  "maxCorrectionCycles": 5,
+  "maxCorrectionCycles": 15,
   "timeoutSeconds": 1800,
   "playwrightMcpVersion": "0.0.80",
   "requiredTools": [
