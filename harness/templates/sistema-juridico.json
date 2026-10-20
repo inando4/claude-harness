@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "maxJobs": 2,
-  "maxCorrectionCycles": 5,
+  "maxCorrectionCycles": 15,
   "timeoutSeconds": 1800,
   "postgresImage": "postgres:17.11-trixie",
   "databaseSchema": "sistema_juridico",
