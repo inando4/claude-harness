@@ -212,6 +212,14 @@ python3 harness/harness.py feedback consentimiento "Corrige el comportamiento de
 python3 harness/harness.py recheck consentimiento
 ```
 
+Si durante el trabajo decides acotar o cambiar el alcance (por ejemplo, aceptar una limitación conocida para cortar correcciones que no convergen), regístralo tú en una terminal; Claude te entrega el texto:
+
+```bash
+python3 harness/harness.py decision consentimiento "AC-33: solo cuentan los valores de las listas cerradas; otras redacciones son limitación conocida"
+```
+
+Confirma `DECIDIR <id>`. La decisión no consume ciclo ni cambia la spec autorizada: queda como enmienda numerada (`D-1`, `D-2`…) en `brief.scopeDecisions` y en el contexto de QA. QA anota en `limitations` lo que la decisión deja fuera y sigue reportando lo demás; el PR la lista. Se admite hasta la aprobación; después usa `feedback`. Una decisión transmitida solo en el prompt del coordinador no enmienda la spec.
+
 Cuando estés conforme, escribe **en el chat** la frase que te entrega Claude, por ejemplo `APROBAR a1b2c3d4`. Ese código identifica una solicitud con trabajo, sesión y versión exactos. Autoriza documentación, PR, espera de CI y limpieza después de que fusiones los PR; no autoriza merge automático. No es un comando de shell ni hace falta cambiar de terminal.
 
 Internamente, `review <id> --session-id "${CLAUDE_SESSION_ID}"` prepara la solicitud; el hook registra únicamente esa frase exacta enviada por el usuario; `accept-review <id>` comprueba nuevamente versión y evidencias antes de documentar. Un “ok”, una respuesta de cuestionario o un permiso de herramienta no cuentan. Correcciones/recheck invalidan el consentimiento anterior. El agente no puede sustituir un hook ausente con aprobación propia. Es un control local como la confirmación por terminal, no una barrera contra procesos maliciosos con acceso de escritura al controlador.
@@ -286,6 +294,7 @@ La actualización se bloquea si hay cualquier trabajo abierto. Conserva `harness
 | QA añadió tests o editaste código | `recheck <id>` y nuevo QA |
 | Migración falló o cambió tras aplicarse | Tú ejecutas `reset-db <id>`, confirmas `RESTAURAR <id>` y verificas desde el mismo snapshot |
 | Límite agotado | Tú decides si ejecutar `extend <id> --cycles 5`; confirmar `AMPLIAR <id>` |
+| QA no converge en un criterio | Tú registras el alcance con `decision <id> "texto"`; confirmar `DECIDIR <id>` |
 | Interrupción durante preparación | Inspeccionar estado/logs; cancelar y limpiar recursos propios antes de preparar con un ID nuevo |
 | Trabajo abandonado | Detener primero su sesión desde `claude agents`, después `cancel <id>` |
 | Ya terminaste de revisar | Detener la sesión y ejecutar `cleanup <id>`; confirmar `ELIMINAR-CLON <id>` |

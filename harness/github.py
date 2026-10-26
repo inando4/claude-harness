@@ -141,8 +141,10 @@ def ensure_pr(h,s,name):
         counts={k:v.get('tests') for k,v in s.get('tests',{}).items()}
         qa=s.get('qa',{})
         criteria='\n'.join('- '+str(v.get('id','criterio'))+': '+str(v.get('status','')) for v in qa.get('criteria',[]))
+        decisions=''.join('- '+v['id']+' (ciclo '+str(v['cycle'])+'): '+v['text']+'\n' for v in s.get('scopeDecisions',[]))
         body.write_text('Implementa '+title+'.\n\nValidación local aprobada por QA y revisión humana; documentación actualizada.\n\n'
-                        +'Pruebas: '+json.dumps(counts,ensure_ascii=False)+'.\n\n'+criteria+'\n')
+                        +'Pruebas: '+json.dumps(counts,ensure_ascii=False)+'.\n\n'+criteria+'\n'
+                        +('\nDecisiones de alcance del usuario durante el trabajo:\n'+decisions if decisions else ''))
         h.run(['gh','pr','create','--repo',repo,'--base',target['base'],'--head',item['branch'],
                '--title',title,'--body-file',str(body)],cwd=item['worktree'],timeout=60)
         candidates=pages(h,endpoint,None)

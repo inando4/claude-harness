@@ -1096,6 +1096,7 @@ def brief(s):
     value['browser']={'tool':'harness_browser_start','job':s['id'],'version':s.get('qaVersion'),'isolated':True}
     value['qaCheckpoint']=runtime_module('qa_context').checkpoint_brief(CoreContext(),s)
     value['feedback']=s.get('feedback')
+    value['scopeDecisions']=s.get('scopeDecisions',[])
     value['specCompletion']=s.get('specCompletion')
     value['bases']={n:v.get('base') for n,v in s.get('repositories',{}).items()}
     value['checks']={k:{f:v.get(f) for f in ('status','summary','attempt')} for k,v in s.get('receipts',{}).items()}
@@ -1236,6 +1237,20 @@ def feedback(s, message):
     s['feedback'] = message
     save(s, 'feedback')
     release_browser(s)
+
+
+def decision(s, text):
+    """A scope decision typed by the user; it amends the spec for every later handoff and the PR."""
+    require(s['stage'] in {'implementing', 'checking', 'ready_for_qa', 'qa', 'paused', 'blocked'} and not s.get('approval'),
+            'Las decisiones de alcance se registran antes de la aprobación; después usa feedback.')
+    text = ' '.join(text.split())
+    require(0 < len(text) <= 2000, 'Escribe la decisión en un texto de hasta 2000 caracteres.')
+    print(text)
+    human_confirmation(s, 'DECIDIR')
+    decisions = s.setdefault('scopeDecisions', [])
+    decisions.append({'id': f'D-{len(decisions)+1}', 'text': text, 'cycle': s['cycles'], 'at': time.time()})
+    save(s, 'scope_decision_by_user')
+    print(json.dumps(decisions[-1], ensure_ascii=False))
 
 
 def human_confirmation(s, verb):
@@ -1475,7 +1490,7 @@ def main():
     p.add_argument('--schema')
     p.add_argument('--safe-snapshot', action='store_true')
     p.add_argument('--test-account', help='Identificador de cuenta sintética; nunca contraseña.')
-    for name in ('show', 'brief', 'review', 'accept-review', 'recover', 'accept-recovery', 'metrics', 'qa-template', 'qa-checkpoint', 'qa-check', 'verify', 'recheck', 'graph', 'qa-start', 'qa-result', 'approve', 'finish', 'feedback', 'launch', 'cancel', 'stop', 'reset-db', 'cleanup', 'extend', 'repair-flyway-network', 'finalize', 'resume-runtime', 'sync'):
+    for name in ('show', 'brief', 'review', 'accept-review', 'recover', 'accept-recovery', 'metrics', 'qa-template', 'qa-checkpoint', 'qa-check', 'verify', 'recheck', 'graph', 'qa-start', 'qa-result', 'approve', 'finish', 'feedback', 'launch', 'cancel', 'stop', 'reset-db', 'cleanup', 'extend', 'decision', 'repair-flyway-network', 'finalize', 'resume-runtime', 'sync'):
         p = sub.add_parser(name)
         p.add_argument('job')
         if name in {'review', 'recover', 'accept-recovery'}: p.add_argument('--session-id', required=True)
@@ -1485,6 +1500,7 @@ def main():
         if name == 'metrics': p.add_argument('--transcript', help='Conversación local de esta sesión; lectura bajo demanda.')
         if name == 'approve': p.add_argument('--version', required=True)
         if name == 'feedback': p.add_argument('message')
+        if name == 'decision': p.add_argument('text')
         if name == 'launch': p.add_argument('--background', action='store_true')
         if name == 'extend': p.add_argument('--cycles', type=int, required=True)
     a = parser.parse_args()
@@ -1551,6 +1567,7 @@ def main():
         elif a.command == 'finish': finish(s)
         elif a.command == 'finalize': finalization_module().start(CoreContext(),s)
         elif a.command == 'feedback': feedback(s, a.message)
+        elif a.command == 'decision': decision(s, a.text)
         elif a.command == 'reset-db': reset_db(s)
         elif a.command == 'resume-runtime': resume_runtime(s)
         elif a.command == 'sync':
