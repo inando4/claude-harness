@@ -587,18 +587,33 @@ def graph(s):
                 continue
             started = time.monotonic()
             step_event(s, 'graph-'+name, 'running', 'fuentes o grafo sin verificar', 0)
-            run(['graphify', '.', '--code-only'], cwd=tree, log=attempt_path(s, 'graphify-'+name+'.log'))
+            merged = graphify_extract(s, tree, name)
             require(output.is_file(), 'Graphify no produjo graph.json en '+name)
             json.loads(output.read_text())
             run(['graphify', 'query', 'application entry point'], cwd=tree, log=attempt_path(s, 'graphify-query-'+name+'.log'))
             require(module.digest(module.files(CoreContext(),tree)) == source, 'El árbol cambió durante Graphify.')
             s['graphs'][name] = {'source':source, 'tool':tool_key, 'output':sha(output)}
-            step_event(s, 'graph-'+name, 'passed', 'grafo actualizado', time.monotonic()-started)
+            step_event(s, 'graph-'+name, 'passed', 'grafo actualizado; Graphify fusionó nodos duplicados' if merged else 'grafo actualizado',
+                       time.monotonic()-started)
         require(job_fingerprint(s) == before, 'El árbol cambió mientras Graphify trabajaba.')
         s['graphVersion'] = before
         save(s, 'graph_ready')
     finally:
         if own_attempt: end_attempt(s)
+
+
+def graphify_extract(s, tree, name):
+    """The job graph is derived from code only: accept the dedup shrink Graphify itself proposes."""
+    log = attempt_path(s, 'graphify-'+name+'.log')
+    try:
+        run(['graphify', '.', '--code-only'], cwd=tree, log=log)
+        return False
+    except InfrastructureBlocked:
+        raise
+    except Blocked:
+        if 'Pass --allow-dedup-shrink' not in Path(log).read_text(errors='replace'): raise
+    run(['graphify', '.', '--code-only', '--allow-dedup-shrink'], cwd=tree, log=attempt_path(s, 'graphify-'+name+'-dedup.log'))
+    return True
 
 
 def prepare(a):
