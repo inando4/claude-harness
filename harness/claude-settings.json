@@ -9,6 +9,7 @@
       "Bash(*harness.py cleanup*)",
       "Bash(*harness.py reset-db*)",
       "Bash(*harness.py extend*)",
+      "Bash(*harness.py decision*)",
       "Read(**/secrets.json)",
       "Read(**/.env*)",
       "Edit(**/harness/**)",

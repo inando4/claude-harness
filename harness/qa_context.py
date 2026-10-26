@@ -18,6 +18,7 @@ def capture(h, s):
     context = {'cycle':s['cycles'], 'version':s['qaVersion'], 'previousVersion':previous.get('version'),
                'mode':'delta' if previous else 'initial', 'changedFiles':changes,
                'testDelta':delta, 'checkpoint':checkpoint_brief(h,s),
+               'scopeDecisions':s.get('scopeDecisions',[]),
                'runtimeChanged':not previous or previous.get('runtime') != runtime,
                'liveEvidenceRequired':True,
                'note':'Las rutas orientan el alcance; no validan datos vivos ni autorizan reutilizar evidencias.'}
