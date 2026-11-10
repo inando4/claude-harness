@@ -259,7 +259,7 @@ def diagnostic(s):
     return value
 
 
-def run(args, cwd=None, env=None, stdin=None, log=None, timeout=None, resource_slot=None):
+def run(args, cwd=None, env=None, stdin=None, log=None, timeout=None, resource_slot=None, accept=(0,)):
     """No shell interpolation. Logs stay local and are not printed on failure."""
     cwd = cwd or ROOT
     timeout = timeout or config()['timeoutSeconds']
@@ -316,7 +316,7 @@ def run(args, cwd=None, env=None, stdin=None, log=None, timeout=None, resource_s
             save(command_state,'command_finished')
         if failure:raise failure
         if code == 124:raise InfrastructureBlocked(f'Comando interrumpido o agotó tiempo. Log: {log}')
-        require(code == 0, f'Comando falló ({code}). Log: {log}')
+        require(code in accept, f'Comando falló ({code}). Log: {log}')
         return ''
     p = subprocess.run(args, cwd=cwd, env=env, stdin=stdin, stdout=subprocess.PIPE,
                        stderr=subprocess.PIPE, timeout=timeout)
@@ -590,7 +590,9 @@ def graph(s):
             merged = graphify_extract(s, tree, name)
             require(output.is_file(), 'Graphify no produjo graph.json en '+name)
             json.loads(output.read_text())
-            run(['graphify', 'query', 'application entry point'], cwd=tree, log=attempt_path(s, 'graphify-query-'+name+'.log'))
+            # Exit 4 is "no matching nodes": the graph loaded and answered; broken or missing graphs exit 1.
+            run(['graphify', 'query', 'application entry point'], cwd=tree, log=attempt_path(s, 'graphify-query-'+name+'.log'),
+                accept=(0, 4))
             require(module.digest(module.files(CoreContext(),tree)) == source, 'El árbol cambió durante Graphify.')
             s['graphs'][name] = {'source':source, 'tool':tool_key, 'output':sha(output)}
             step_event(s, 'graph-'+name, 'passed', 'grafo actualizado; Graphify fusionó nodos duplicados' if merged else 'grafo actualizado',
